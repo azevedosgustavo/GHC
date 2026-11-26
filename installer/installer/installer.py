@@ -118,6 +118,30 @@ def extract_payload(dest, progress=lambda i, n: None):
     return files
 
 
+def verify_runtime(exe):
+    """Checks the installed application without requiring a system Python."""
+    with tempfile.TemporaryDirectory() as temp:
+        report = os.path.join(temp, "runtime-check.txt")
+        env = os.environ.copy()
+        env.pop("PYTHONHOME", None)
+        env.pop("PYTHONPATH", None)
+        try:
+            result = subprocess.run([exe, "--self-test", report], cwd=os.path.dirname(exe),
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, creationflags=NOWIN,
+                                    timeout=60, env=env)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Verificacao das dependencias excedeu 60 segundos.")
+        if os.path.isfile(report):
+            with open(report, encoding="utf-8") as f:
+                details = f.read(4096)
+        else:
+            details = "O aplicativo nao produziu um relatorio."
+        if result.returncode != 0 or details != "OK":
+            raise RuntimeError("Falha na verificacao das dependencias (codigo %s): %s" %
+                               (result.returncode, details))
+
+
 # --- Windows integration ---------------------------------------------
 def _vq(s):
     return '"' + s.replace('"', '""') + '"'
@@ -249,6 +273,14 @@ def install(dest, opts, log=print, progress=lambda i, n: None):
     log("Copiando arquivos...")
     files = extract_payload(dest, progress)
     exe = os.path.join(dest, EXE_NAME)
+
+    with open(os.path.join(dest, MANIFEST), "w", encoding="utf-8") as f:
+        json.dump({"version": VERSION, "files": files, "shortcuts": [],
+                   "taskbar": False}, f)
+
+    if IS_WIN:
+        log("Verificando dependencias...")
+        verify_runtime(exe)
 
     if getattr(sys, "frozen", False):
         shutil.copy2(sys.executable, os.path.join(dest, UNINSTALLER))
@@ -437,6 +469,8 @@ def run_uninstall_gui(dest):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="GHC-Setup")
+    p.add_argument("--verify-package", metavar="REPORT",
+                   help="verificar o pacote em pasta temporaria e gravar o resultado")
     p.add_argument("--uninstall", action="store_true")
     p.add_argument("--silent", action="store_true", help="instala sem interface")
     p.add_argument("--dir", default=DEFAULT_DIR)
@@ -446,6 +480,19 @@ def main(argv=None):
     p.add_argument("--autostart", action="store_true")
     p.add_argument("--launch", action="store_true", help="(silent) executar ao concluir")
     a = p.parse_args(argv)
+
+    if a.verify_package:
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                extract_payload(temp)
+                verify_runtime(os.path.join(temp, EXE_NAME))
+        except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as e:
+            with open(a.verify_package, "w", encoding="utf-8") as f:
+                f.write("%s: %s" % (type(e).__name__, e))
+            return 1
+        with open(a.verify_package, "w", encoding="utf-8") as f:
+            f.write("OK")
+        return 0
 
     frozen_uninstaller = getattr(sys, "frozen", False) and \
         os.path.basename(sys.executable).lower() == UNINSTALLER
