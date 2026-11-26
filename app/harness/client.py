@@ -1,10 +1,12 @@
 """Copilot chat completions client with SSE streaming and tool-call assembly."""
 import json
+import os
 import urllib.request
 import urllib.error
 
 from .auth import EDITOR_HEADERS
-from .skills import BUILTIN_SKILLS, DOCUMENT_GUIDANCE
+from .resources import installation_dir
+from .skills import automatic_skill_context
 
 
 def limit_context(messages, max_chars):
@@ -106,9 +108,11 @@ class ChatClient:
                 request_messages[0] = first
             else:
                 request_messages.insert(0, {"role": "system", "content": instruction.strip()})
+        skills_dir = os.path.join(installation_dir(), "skill")
+        skill_location = "A pasta de skills do GHC é: " + skills_dir
         extra = "\n\n".join(value for value in
-                            BUILTIN_SKILLS + (DOCUMENT_GUIDANCE, self.canvas_instructions,
-                                              self.skill_instructions) if value)
+                            (self.canvas_instructions, self.skill_instructions, skill_location,
+                             automatic_skill_context(skills_dir)) if value)
         if extra:
             if request_messages and request_messages[0].get("role") == "system":
                 first = dict(request_messages[0])

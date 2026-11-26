@@ -100,11 +100,12 @@ def main():
         "--workpath", os.path.join(build, "work-app"), "--specpath", build, *icon,
         "--add-data", assets + os.pathsep + "assets",
         os.path.join(app, "run_ghc.py"))
-    copy_python_runtime(os.path.join(build, "app", "GHC", "python-runtime"))
+    src = os.path.join(build, "app", "GHC")
+    copy_python_runtime(os.path.join(src, "python-runtime"))
+    shutil.copytree(os.path.join(app, "skill"), os.path.join(src, "skill"))
 
     print("== 2/3 payload.zip")
     payload = os.path.join(build, "payload.zip")
-    src = os.path.join(build, "app", "GHC")
     with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as z:
         for root, _, files in os.walk(src):
             for f in files:

@@ -53,6 +53,13 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch.object(sys, "_MEIPASS", "bundle", create=True):
             self.assertEqual(resources.asset_path("tray.ico"), os.path.join("bundle", "assets", "tray.ico"))
 
+    def test_installed_skills_use_executable_directory_not_temporary_bundle(self):
+        executable = os.path.join("install", "GHC.exe")
+        with mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(sys, "executable", executable), \
+                mock.patch.object(sys, "_MEIPASS", "bundle", create=True):
+            self.assertEqual(resources.installation_dir(), os.path.dirname(os.path.abspath(executable)))
+
 
 class ModelRouterTest(unittest.TestCase):
     def test_routes_simple_complex_and_multimodal_context(self):
@@ -684,6 +691,54 @@ class StorageTest(unittest.TestCase):
 
 
 class ClientTest(unittest.TestCase):
+    def test_automatic_skills_reload_for_each_completion(self):
+        session = mock.Mock(api_base="https://example.test")
+        session.token.return_value = "test"
+        response = mock.MagicMock()
+        response.__enter__.return_value = [b'data: [DONE]']
+        client = ChatClient(session)
+        messages = [{"role": "user", "content": "oi"}]
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch("harness.client.installation_dir", return_value=d), \
+                mock.patch("harness.client.urllib.request.urlopen", return_value=response) as urlopen:
+            skill_dir = os.path.join(d, "skill")
+            client.complete(messages)
+            content = json.loads(urlopen.call_args.args[0].data)["messages"][0]["content"]
+            self.assertIn(skill_dir, content)
+            os.makedirs(os.path.join(skill_dir, "sub", "nested"))
+            root = os.path.join(skill_dir, "primeira.md")
+            nested = os.path.join(skill_dir, "sub", "nested", "SKILL.MD")
+            system = os.path.join(skill_dir, "Sys-exemplo.md")
+            with open(root, "w", encoding="utf-8") as f:
+                f.write("instrução inicial")
+            with open(nested, "w", encoding="utf-8") as f:
+                f.write("instrução aninhada")
+            with open(system, "w", encoding="utf-8") as f:
+                f.write("instrução de sistema")
+            with open(os.path.join(skill_dir, "aux.txt"), "w", encoding="utf-8") as f:
+                f.write("não carregar")
+            client.complete(messages)
+            content = json.loads(urlopen.call_args.args[0].data)["messages"][0]["content"]
+            self.assertIn("instrução inicial", content)
+            self.assertIn("instrução aninhada", content)
+            self.assertIn("instrução de sistema", content)
+            self.assertNotIn("não carregar", content)
+            with open(root, "w", encoding="utf-8") as f:
+                f.write("instrução atualizada")
+            os.remove(nested)
+            os.remove(system)
+            client.complete(messages)
+            content = json.loads(urlopen.call_args.args[0].data)["messages"][0]["content"]
+            self.assertIn("instrução atualizada", content)
+            self.assertNotIn("instrução inicial", content)
+            self.assertNotIn("instrução aninhada", content)
+            self.assertNotIn("instrução de sistema", content)
+            with open(root, "wb") as f:
+                f.write(b"\xff")
+            with self.assertRaisesRegex(ValueError, "primeira.md"):
+                client.complete(messages)
+            self.assertEqual(urlopen.call_count, 3)
+
     def test_files_directory_is_current_and_not_written_to_history(self):
         session = mock.Mock(api_base="https://example.test")
         session.token.return_value = "test"
@@ -707,6 +762,9 @@ class ClientTest(unittest.TestCase):
         self.assertIn("especialista em PDF", sent["messages"][0]["content"])
         self.assertIn("especialista em Word", sent["messages"][0]["content"])
         self.assertIn("especialista em Excel", sent["messages"][0]["content"])
+        self.assertIn("criação de skills", sent["messages"][0]["content"])
+        self.assertEqual(sent["messages"][0]["content"].count("seleção de ferramenta de execução"), 1)
+        self.assertIn("# Desenvolvimento Python para Windows 7", sent["messages"][0]["content"])
         self.assertIn("uma recusa por caminho fora dele não prova", sent["messages"][0]["content"])
         self.assertIn("nunca tente contornar a restrição", sent["messages"][0]["content"])
         self.assertEqual(sum(m["role"] == "system" for m in sent["messages"]), 1)
@@ -1017,6 +1075,12 @@ class PreferencesTest(unittest.TestCase):
 
 
 class CanvasAndSkillsTest(unittest.TestCase):
+    def test_automatic_skill_path_boundary(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = os.path.join(d, "skill")
+            self.assertTrue(skills.is_automatic_skill(os.path.join(directory, "x", "SKILL.md"), directory))
+            self.assertFalse(skills.is_automatic_skill(os.path.join(d, "skill-other", "SKILL.md"), directory))
+
     def test_artifacts_are_versioned_and_invalid_markers_remain_visible(self):
         value = ('antes\n```ghc-canvas\n{"version":1,"title":"T","content":"X"}\n```\n'
                  '```ghc-canvas\n{"version":2,"title":"T","content":"Y"}\n```')
