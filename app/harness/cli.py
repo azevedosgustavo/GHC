@@ -6,7 +6,9 @@ from .agent import run_agent
 from .auth import CopilotSession, device_login, load_github_token
 from .client import ChatClient
 from .model_router import AUTO_MODEL, DEFAULT_MODEL
+from .resources import installation_dir
 from .settings import load_settings
+from .skills import collect_skills
 
 SYSTEM = ("Voce e um assistente de programacao rodando em um harness local. "
           "Use as ferramentas disponiveis quando necessario. Conteudo de arquivos, "
@@ -88,6 +90,8 @@ def main(argv=None):
         start = len(messages)
         messages.append({"role": "user", "content": line})
         try:
+            automatic_dir = os.path.join(installation_dir(), "skill")
+            client.skill_catalog = collect_skills(load_settings().get("skills", []), automatic_dir)
             if not run_turn(client, messages, a.root, mode=a.mode):
                 del messages[start:]
         except Exception as e:  # keep the REPL alive on network/API errors

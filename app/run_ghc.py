@@ -19,6 +19,7 @@ def self_test(report):
         import pypdf
         import docx
         import openpyxl
+        import yaml
         import harness.theme
         import harness.tools
         import harness.tray
