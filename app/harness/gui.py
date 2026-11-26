@@ -10,7 +10,7 @@ import uuid
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 from .agent import run_agent
-from .attachments import display_content, prepare_content
+from .attachments import clipboard_attachments, display_content, prepare_content
 from .browsers import installed_browsers, open_url
 from .canvas import INSTRUCTIONS as CANVAS_INSTRUCTIONS, fetch_page, segments, valid_url
 from .auth import (AuthError, CopilotSession, device_poll, device_start, load_github_token,
@@ -20,7 +20,7 @@ from .model_router import AUTO_MODEL, choose_model, fallback_models
 from .managed_files import remove_files, save_files
 from .resources import asset_path, installation_dir
 from .settings import load_settings, save_settings
-from .skills import MAX_CONFIG_CHARS, discover, inspect_skill, is_automatic_skill, skill_context
+from .skills import MAX_CONFIG_CHARS, collect_skills, discover, inspect_skill
 from .storage import GITHUB, Store
 from .theme import DARK, MODE_LABELS, load_mode, resolve
 from .tray import Tray, signal_existing
@@ -346,6 +346,7 @@ class App(tk.Tk):
             button.bind("<FocusIn>", lambda _e, text=hint: self._toolbar_hint(text))
             button.bind("<FocusOut>", lambda _e: self._toolbar_hint(""))
         self.input.bind("<Return>", self._on_return)
+        self.input.bind("<<Paste>>", self._on_paste)
         self.input.focus_set()
 
     def _fit_toolbar(self, event):
@@ -1057,7 +1058,8 @@ class App(tk.Tk):
                 previous_model = self._last_model(m) or previous_model
             elif m["role"] == "assistant":
                 for tc in m.get("tool_calls") or []:
-                    self._insert("-> %s %s\n" % (tc["function"]["name"], tc["function"]["arguments"]), "tool")
+                    if tc["function"]["name"] != "load_skill":
+                        self._insert("-> %s %s\n" % (tc["function"]["name"], tc["function"]["arguments"]), "tool")
                 if m.get("content"):
                     self._insert("Copilot\n", "who_bot")
                     for kind, value in segments(m["content"]):
@@ -1307,6 +1309,18 @@ class App(tk.Tk):
             attachments.extend(p for p in paths if p not in attachments)
             self._update_attachments()
 
+    def _on_paste(self, _event):
+        try:
+            images = clipboard_attachments()
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Colar imagem", str(e))
+            return "break"
+        if not images:
+            return None
+        self._attachments().extend(images)
+        self._update_attachments()
+        return "break"
+
     def _attachments(self):
         return self.attachment_drafts.setdefault(self._draft_key(), [])
 
@@ -1325,7 +1339,8 @@ class App(tk.Tk):
         self._update_attachments()
 
     def _update_attachments(self):
-        names = ", ".join(os.path.basename(p) for p in self._attachments())
+        names = ", ".join(p["name"] if isinstance(p, dict) else os.path.basename(p)
+                          for p in self._attachments())
         self.attachment_label.config(text=names)
         if names:
             self.attachment_label.pack(fill="x", padx=12, pady=(4, 0), before=self.input)
@@ -1363,9 +1378,7 @@ class App(tk.Tk):
             return
         try:
             automatic_dir = os.path.join(installation_dir(), "skill")
-            entries = [entry for entry in self.preferences.get("skills", [])
-                       if not is_automatic_skill(entry["path"], automatic_dir)]
-            instructions = skill_context(entries)
+            catalog = collect_skills(self.preferences.get("skills", []), automatic_dir)
             content, files = prepare_content(text, self._attachments())
         except (OSError, ValueError) as e:
             messagebox.showerror("Skills ou anexos", str(e))
@@ -1421,7 +1434,7 @@ class App(tk.Tk):
         self.client.on_model_change = lambda old, new: self.q.put(("model_changed", message, old, new))
         self.client.on_model_unavailable = lambda failed: self.q.put(("model_unavailable", failed))
         self.client.should_retry_model = lambda: not self.stop_flag
-        self.client.skill_instructions = instructions
+        self.client.skill_catalog = catalog
         self.client.canvas_instructions = CANVAS_INSTRUCTIONS
         self.status.config(text="Pensando · " + self.client.model)
         threading.Thread(target=self._worker, args=(msgs, self.root_dir, self.permission_mode),

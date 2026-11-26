@@ -2,10 +2,13 @@
 import base64
 import io
 import os
+import sys
+import uuid
 import zipfile
 
 import docx
 import openpyxl
+from PIL import Image, ImageGrab
 from docx.opc.exceptions import PackageNotFoundError
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -19,6 +22,32 @@ MAX_TOTAL_BYTES = 4 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 MAX_TEXT_CHARS = 500000
 MAX_CELLS = 20000
+
+
+def clipboard_attachments():
+    if sys.platform != "win32":
+        return []
+    content = ImageGrab.grabclipboard()
+    if isinstance(content, Image.Image):
+        try:
+            with io.BytesIO() as output:
+                content.save(output, format="PNG")
+                data = output.getvalue()
+        finally:
+            content.close()
+        if len(data) > MAX_FILE_BYTES:
+            raise ValueError("Imagem colada excede 2 MiB.")
+        return [{"name": "imagem-colada-%s.png" % uuid.uuid4().hex[:8], "data": data}]
+    if isinstance(content, list) and content:
+        for path in content:
+            with open(path, "rb") as f:
+                header = f.read(12)
+            if not _image_type(header):
+                return []
+            if os.path.getsize(path) > MAX_FILE_BYTES:
+                raise ValueError("Arquivo excede 2 MiB: %s" % os.path.basename(path))
+        return content
+    return []
 
 
 def _image_type(data):
@@ -109,14 +138,20 @@ def prepare_content(text, paths):
     files = []
     total = 0
     for path in paths:
-        with open(path, "rb") as f:
-            data = f.read(MAX_FILE_BYTES + 1)
+        if isinstance(path, dict):
+            name, data = path.get("name"), path.get("data")
+            if not isinstance(name, str) or not name or not isinstance(data, bytes) or not _image_type(data):
+                raise ValueError("Imagem colada inválida.")
+        else:
+            name = os.path.basename(path)
+            with open(path, "rb") as f:
+                data = f.read(MAX_FILE_BYTES + 1)
         if len(data) > MAX_FILE_BYTES:
-            raise ValueError("Arquivo excede 2 MiB: %s" % os.path.basename(path))
+            raise ValueError("Arquivo excede 2 MiB: %s" % name)
         total += len(data)
         if total > MAX_TOTAL_BYTES:
             raise ValueError("Os anexos juntos excedem 4 MiB.")
-        name = os.path.basename(path).replace("\n", " ").replace("\r", " ")
+        name = os.path.basename(name).replace("\n", " ").replace("\r", " ")
         block_index = len(blocks)
         image_type = _image_type(data)
         if image_type:
