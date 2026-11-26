@@ -76,6 +76,10 @@ if IS_WIN:
     _sig(user32.SetForegroundWindow, wintypes.BOOL, wintypes.HWND)
     _sig(user32.FindWindowW, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR)
     _sig(user32.LoadIconW, H, H, ctypes.c_void_p)
+    _sig(user32.LoadImageW, H, H, wintypes.LPCWSTR, wintypes.UINT,
+         ctypes.c_int, ctypes.c_int, wintypes.UINT)
+    _sig(user32.GetSystemMetrics, ctypes.c_int, ctypes.c_int)
+    _sig(user32.DestroyIcon, wintypes.BOOL, H)
     _sig(shell32.Shell_NotifyIconW, wintypes.BOOL, wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW))
     _sig(kernel32.GetModuleHandleW, H, wintypes.LPCWSTR)
 
@@ -94,10 +98,15 @@ def signal_existing():
 class Tray:
     """Callbacks run on the tray thread; keep them thread-safe (e.g. queue.put)."""
 
-    def __init__(self, tooltip, on_show, on_quit):
+    def __init__(self, tooltip, on_show, on_quit, on_update=None, icon_path=None):
         self.tooltip = tooltip[:127]
         self.on_show = on_show
         self.on_quit = on_quit
+        self.on_update = on_update
+        self.icon_path = icon_path
+        self.icon_error = None
+        self._icon = None
+        self._owns_icon = False
         self.hwnd = None
         self._ready = threading.Event()
         self._proc = None
@@ -130,12 +139,21 @@ class Tray:
     def _add(self):
         nid = self._nid(NIF_MESSAGE | NIF_ICON | NIF_TIP)
         nid.uCallbackMessage = WM_APP_TRAY
-        nid.hIcon = user32.LoadIconW(None, ctypes.c_void_p(IDI_APPLICATION))
+        nid.hIcon = self._icon
         nid.szTip = self.tooltip
         return shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid))
 
     def _run(self):
         try:
+            if self.icon_path:
+                self._icon = user32.LoadImageW(None, self.icon_path, 1,
+                                              user32.GetSystemMetrics(49),
+                                              user32.GetSystemMetrics(50), 0x10)
+                self._owns_icon = bool(self._icon)
+                if not self._icon:
+                    self.icon_error = "Não foi possível carregar o ícone da bandeja; será usado o ícone padrão."
+            if not self._icon:
+                self._icon = user32.LoadIconW(None, ctypes.c_void_p(IDI_APPLICATION))
             self._proc = WNDPROC(self._wndproc)  # keep a reference or it gets collected
             hinst = kernel32.GetModuleHandleW(None)
             wc = WNDCLASSW()
@@ -152,6 +170,10 @@ class Tray:
                 user32.DestroyWindow(hwnd)
                 return
         finally:
+            if not self.hwnd and self._owns_icon:
+                user32.DestroyIcon(self._icon)
+                self._icon = None
+                self._owns_icon = False
             self._ready.set()
         msg = wintypes.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
@@ -177,6 +199,10 @@ class Tray:
             return 0
         if msg == WM_DESTROY:
             shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._nid(0)))
+            if self._owns_icon:
+                user32.DestroyIcon(self._icon)
+                self._icon = None
+                self._owns_icon = False
             user32.PostQuitMessage(0)
             return 0
         return user32.DefWindowProcW(hwnd, msg, wp, lp)
@@ -184,6 +210,8 @@ class Tray:
     def _menu(self, hwnd):
         menu = user32.CreatePopupMenu()
         user32.AppendMenuW(menu, MF_STRING, 1, "Abrir")
+        if self.on_update:
+            user32.AppendMenuW(menu, MF_STRING, 3, "Verificar atualizações")
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(menu, MF_STRING, 2, "Sair")
         pt = wintypes.POINT()
@@ -196,3 +224,5 @@ class Tray:
             self.on_show()
         elif cmd == 2:
             self.on_quit()
+        elif cmd == 3 and self.on_update:
+            self.on_update()

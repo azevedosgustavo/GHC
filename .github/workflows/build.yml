@@ -17,8 +17,10 @@ jobs:
         with:
           python-version: "3.8"
           architecture: x86
-      - run: python -m pip install pyinstaller==5.13.2
+      - run: python -m pip install pyinstaller==5.13.2 -r app/requirements.txt
       - name: Unit tests
+        env:
+          PYTHONPATH: app
         run: |
           python -m unittest discover app/tests
           python -m unittest discover installer/tests
@@ -27,7 +29,13 @@ jobs:
       - name: Smoke test (install, launch, uninstall)
         shell: pwsh
         run: |
-          Start-Process installer\dist\GHC-Setup.exe -Wait -ArgumentList '--silent','--dir','C:\GHC','--startmenu','--desktop','--autostart'
+          $report = Join-Path $env:RUNNER_TEMP 'ghc-package-check.txt'
+          $setupExe = (Get-ChildItem installer\dist\GHC-Setup-v*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          if (!$setupExe) { throw "Setup not found" }
+          $check = Start-Process $setupExe -Wait -PassThru -ArgumentList '--verify-package', "`"$report`""
+          if ($check.ExitCode -ne 0 -or !(Test-Path $report) -or (Get-Content $report -Raw) -ne 'OK') { throw "Package verification failed" }
+          $setup = Start-Process $setupExe -Wait -PassThru -ArgumentList '--silent','--dir','C:\GHC','--startmenu','--desktop','--autostart'
+          if ($setup.ExitCode -ne 0) { throw "Installer failed with code $($setup.ExitCode)" }
           if (!(Test-Path C:\GHC\GHC.exe)) { throw "GHC.exe not installed" }
           if (!(Test-Path C:\GHC\uninstall.exe)) { throw "uninstall.exe missing" }
           Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run -Name GHC
@@ -42,8 +50,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory out | Out-Null
-          Copy-Item installer\dist\GHC-Setup.exe out\
-          Copy-Item installer\build\payload.zip out\GHC-portable.zip
+          $setupExe = (Get-ChildItem installer\dist\GHC-Setup-v*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          $payload = (Get-ChildItem installer\build -Filter payload.zip -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          if (!$setupExe -or !$payload) { throw "Build outputs not found" }
+          Copy-Item $setupExe out\GHC-Setup.exe
+          Copy-Item $payload out\GHC-portable.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ghc
