@@ -1,39 +1,29 @@
 """Light/dark palettes and Windows system detection (Aero accent, app dark mode)."""
-import json
-import os
 import sys
 
-from .auth import CONFIG_DIR
+from .settings import load_settings, save_settings
 
-SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
 MODES = ("system", "light", "dark")
 MODE_LABELS = {"system": "Sistema", "light": "Claro", "dark": "Escuro"}
 
 # Values inside one palette must be distinct: the GUI maps widget colours back to roles by value.
-DARK = {"bg": "#212121", "side": "#171717", "panel": "#2f2f2f", "fg": "#ececec",
-        "dim": "#9b9b9b", "accent": "#10a37f", "code": "#0d0d0d", "sel": "#343541",
-        "err": "#ff6b6b", "danger": "#c0392b"}
-LIGHT = {"bg": "#ffffff", "side": "#f0f0f0", "panel": "#e6e6e6", "fg": "#1f1f1f",
-         "dim": "#6b6b6b", "accent": "#10a37f", "code": "#f7f7f7", "sel": "#d4dff0",
-         "err": "#c0392b", "danger": "#d9534f"}
+DARK = {"bg": "#1c2128", "side": "#161b22", "panel": "#252c35", "fg": "#e6edf3",
+        "dim": "#a7b3c2", "accent": "#3164b6", "link": "#80b7ff", "code": "#0d1117", "sel": "#344253",
+        "edge": "#465366", "err": "#ff9b96", "danger": "#a73436"}
+LIGHT = {"bg": "#ffffff", "side": "#f4f6f9", "panel": "#f8fafc", "fg": "#1f2937",
+         "dim": "#526174", "accent": "#315da8", "link": "#315da9", "code": "#edf2f7", "sel": "#dce8f6",
+         "edge": "#c2cfdd", "err": "#a72d2d", "danger": "#a33136"}
 
 
 def load_mode():
-    try:
-        with open(SETTINGS_FILE, encoding="utf-8") as f:
-            m = json.load(f).get("theme")
-        return m if m in MODES else "system"
-    except (IOError, ValueError):
-        return "system"
+    m = load_settings().get("theme")
+    return m if m in MODES else "system"
 
 
 def save_mode(mode):
-    try:
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"theme": mode}, f)
-    except IOError:
-        pass
+    settings = load_settings()
+    settings["theme"] = mode
+    save_settings(settings)
 
 
 def system_prefers_dark():
@@ -69,12 +59,32 @@ def aero_accent():
 
 
 def readable(r, g, b):
-    """Darkens pale glass tints so white button text stays legible."""
-    lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    if lum > 0.5:
-        k = 0.5 / lum
-        r, g, b = int(r * k), int(g * k), int(b * k)
+    """Darken the accent until it has at least 4.5:1 contrast with white."""
+    def luminance(values):
+        linear = []
+        for value in values:
+            c = value / 255.0
+            linear.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    while luminance((r, g, b)) > (1.05 / 4.5 - 0.05):
+        r, g, b = int(r * 0.95), int(g * 0.95), int(b * 0.95)
     return "#%02x%02x%02x" % (r, g, b)
+
+
+def blend(base, accent, amount):
+    a = [int(base[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(accent[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(round(x * (1 - amount) + y * amount) for x, y in zip(a, b))
+
+
+def contrast(first, second):
+    def luminance(color):
+        values = [int(color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)]
+        values = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in values]
+        return 0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2]
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
 
 
 def resolve(mode):
@@ -84,4 +94,12 @@ def resolve(mode):
     accent = aero_accent()
     if accent and accent not in pal.values():
         pal["accent"] = accent
+        pal["side"] = blend(pal["side"], accent, 0.07 if dark else 0.04)
+        pal["sel"] = blend(pal["sel"], accent, 0.12 if dark else 0.09)
+        pal["edge"] = blend(pal["edge"], accent, 0.22)
+        link = accent
+        while contrast(link, pal["bg"]) < 4.5:
+            link = blend(link, "#ffffff" if dark else "#000000", 0.08)
+        if link not in pal.values():
+            pal["link"] = link
     return pal, dark
