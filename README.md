@@ -77,12 +77,28 @@ ambiente de destino; os testes automatizados não comprovam essas integrações.
   arquivos é necessário o modo Manual ou Piloto automático. A geração não
   exige Microsoft Office; `.doc` e `.xls` antigos não são produzidos. O openpyxl
   grava fórmulas, mas não calcula seus resultados.
-- **Skills locais:** em **Skills**, adicione `SKILL.md` ou descubra arquivos
+- **Skills automáticas:** a pasta `skill` dentro da instalação do GHC é criada
+  pelo instalador. Cada arquivo `.md` não vazio, em UTF-8 e com até 100 KiB,
+  diretamente nessa pasta ou em qualquer subpasta, é uma skill independente.
+  Elas são carregadas automaticamente a cada chamada ao modelo, inclusive após
+  alterações, sem aprovação individual. Confie apenas em arquivos colocados
+  nessa pasta: suas instruções são enviadas ao modelo e, no piloto automático,
+  podem influenciar comandos executados sem confirmação ou isolamento. Para
+  desativar uma delas, retire o arquivo dessa pasta; o gerenciador de outras
+  skills não controla sua ativação ou seus parâmetros. A habilidade de criação
+  de skills orienta o GHC a usar essa pasta e respeita os modos de permissão.
+  Arquivos de skills criados pelo usuário são preservados na reinstalação e
+  desinstalação. A skill de desenvolvimento Python para Windows vem no pacote;
+  arquivos de skills já existentes não são sobrescritos nem atualizados pelo
+  instalador. As habilidades padrão ficam nessa mesma pasta em arquivos com
+  prefixo `Sys-`; também são carregadas automaticamente e podem ser editadas
+  ou desativadas retirando seus arquivos.
+- **Outras skills locais:** em **Skills**, adicione `SKILL.md` ou descubra arquivos
   na pasta escolhida e em suas subpastas imediatas. Revise o conteúdo e ative
   apenas fontes confiáveis; é possível definir parâmetros de texto por skill
   e ativar ou desativar cada uma. As instruções e parâmetros ativos são
   enviados ao modelo em cada conversa; não inclua segredos. Alterações no
-  `SKILL.md` exigem nova aprovação. Outros arquivos da skill, incluindo scripts,
+  `SKILL.md` adicionados por esse gerenciador exigem nova aprovação. Outros arquivos da skill, incluindo scripts,
   não são verificados e podem mudar sem aviso. Scripts não são executados pelo
   gerenciador: o modelo pode solicitá-los pelas ferramentas de comando, sujeitas
   ao modo selecionado. No piloto automático eles podem executar sem confirmação

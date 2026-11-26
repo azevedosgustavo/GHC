@@ -107,13 +107,29 @@ def extract_payload(dest, progress=lambda i, n: None):
             target = os.path.realpath(os.path.join(dest, info.filename))
             if not os.path.normcase(target).startswith(root + os.sep):
                 raise ValueError("Pacote invalido: " + info.filename)
+            rel = os.path.relpath(target, os.path.realpath(dest))
+            is_skill = os.path.normpath(info.filename).split(os.sep)[0].lower() == "skill"
             if info.filename.endswith("/"):
                 os.makedirs(target, exist_ok=True)
             else:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                with z.open(info) as src, open(target, "wb") as out:
-                    shutil.copyfileobj(src, out)
-                files.append(os.path.relpath(target, os.path.realpath(dest)))
+                if is_skill:
+                    try:
+                        out = open(target, "xb")
+                    except FileExistsError:
+                        if not os.path.isfile(target):
+                            raise ValueError("Caminho da skill não é arquivo: " + target)
+                    else:
+                        try:
+                            with out, z.open(info) as src:
+                                shutil.copyfileobj(src, out)
+                        except (OSError, EOFError, zipfile.BadZipFile, RuntimeError):
+                            os.remove(target)
+                            raise
+                else:
+                    with z.open(info) as src, open(target, "wb") as out:
+                        shutil.copyfileobj(src, out)
+                    files.append(rel)
             progress(i, len(infos))
     return files
 
@@ -272,6 +288,7 @@ def install(dest, opts, log=print, progress=lambda i, n: None):
     os.makedirs(dest, exist_ok=True)
     log("Copiando arquivos...")
     files = extract_payload(dest, progress)
+    os.makedirs(os.path.join(dest, "skill"), exist_ok=True)
     exe = os.path.join(dest, EXE_NAME)
 
     with open(os.path.join(dest, MANIFEST), "w", encoding="utf-8") as f:

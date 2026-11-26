@@ -61,16 +61,83 @@ class InstallerTest(unittest.TestCase):
         with mock.patch.object(ins, "IS_WIN", False):
             ins.install(dest, {}, log=lambda s: None)
             self.assertTrue(os.path.isfile(os.path.join(dest, "lib", "a.txt")))
+            self.assertTrue(os.path.isdir(os.path.join(dest, "skill")))
             self.assertIsNone(ins.validate_dir(dest))  # reinstall over existing is allowed
             ins.install(dest, {}, log=lambda s: None)
             ins.uninstall(dest, False, log=lambda s: None)
             self.assertFalse(os.path.exists(dest))
+
+    def test_user_skills_survive_reinstallation_and_uninstall(self):
+        dest = os.path.join(self.tmp, "GHC")
+        with mock.patch.object(ins, "IS_WIN", False):
+            ins.install(dest, {}, log=lambda s: None)
+            skill = os.path.join(dest, "skill", "example.md")
+            with open(skill, "w", encoding="utf-8") as f:
+                f.write("Instruções")
+            ins.install(dest, {}, log=lambda s: None)
+            ins.uninstall(dest, False, log=lambda s: None)
+            with open(skill, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "Instruções")
+
+    def test_build_packages_skills_and_installer_preserves_existing_content(self):
+        build = load_build()
+        app = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "app"))
+
+        def fake_pyi(*args):
+            output = args[args.index("--distpath") + 1]
+            name = args[args.index("--name") + 1]
+            if name == "GHC":
+                output = os.path.join(output, name)
+            os.makedirs(output, exist_ok=True)
+            with open(os.path.join(output, name + ".exe"), "wb") as f:
+                f.write(b"stub")
+
+        with mock.patch.object(sys, "argv", ["build.py", "--app", app, "--output-dir", self.tmp]), \
+                mock.patch.object(build, "pyi", side_effect=fake_pyi), \
+                mock.patch.object(build, "copy_python_runtime"):
+            build.main()
+
+        builds = os.path.join(self.tmp, "build")
+        payload = os.path.join(builds, os.listdir(builds)[0], "payload.zip")
+        relative = os.path.join("skill", "python-desenvolvimento", "SKILL.md")
+        source = os.path.join(app, relative)
+        dest = os.path.join(self.tmp, "dest")
+        with zipfile.ZipFile(payload) as z:
+            for name in ("Sys-execucao.md", "Sys-pdf.md", "Sys-word.md", "Sys-excel.md",
+                         "Sys-criacao-de-skills.md", "Sys-arquivos.md"):
+                self.assertIn("skill/" + name, z.namelist())
+        with mock.patch.object(ins, "resource", return_value=payload):
+            files = ins.extract_payload(dest)
+            installed = os.path.join(dest, relative)
+            with open(source, "rb") as f:
+                expected = f.read()
+            with open(installed, "rb") as f:
+                self.assertEqual(f.read(), expected)
+            self.assertNotIn(relative, files)
+            with open(installed, "wb") as f:
+                f.write(b"customizada")
+            ins.extract_payload(dest)
+            with open(installed, "rb") as f:
+                self.assertEqual(f.read(), b"customizada")
 
     def test_zip_slip(self):
         with zipfile.ZipFile(self.zip, "w") as z:
             z.writestr("../evil.txt", "x")
         with self.assertRaises(ValueError):
             ins.extract_payload(os.path.join(self.tmp, "d"))
+
+    def test_failed_skill_extraction_can_be_retried(self):
+        with zipfile.ZipFile(self.zip, "w") as z:
+            z.writestr("skill/example.md", "instruções")
+        dest = os.path.join(self.tmp, "dest")
+        with mock.patch.object(zipfile.ZipFile, "open", side_effect=OSError("falha")):
+            with self.assertRaisesRegex(OSError, "falha"):
+                ins.extract_payload(dest)
+        path = os.path.join(dest, "skill", "example.md")
+        self.assertFalse(os.path.exists(path))
+        ins.extract_payload(dest)
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "instruções")
 
     def test_runtime_check_requires_successful_report(self):
         exe = os.path.join(self.tmp, "GHC.exe")

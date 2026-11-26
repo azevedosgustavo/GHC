@@ -18,9 +18,9 @@ from .auth import (AuthError, CopilotSession, device_poll, device_start, load_gi
 from .client import ChatClient
 from .model_router import AUTO_MODEL, choose_model, fallback_models
 from .managed_files import remove_files, save_files
-from .resources import asset_path
+from .resources import asset_path, installation_dir
 from .settings import load_settings, save_settings
-from .skills import MAX_CONFIG_CHARS, discover, inspect_skill, skill_context
+from .skills import MAX_CONFIG_CHARS, discover, inspect_skill, is_automatic_skill, skill_context
 from .storage import GITHUB, Store
 from .theme import DARK, MODE_LABELS, load_mode, resolve
 from .tray import Tray, signal_existing
@@ -768,7 +768,9 @@ class App(tk.Tk):
 
     def _build_skills_page(self, parent, window):
         entries = [dict(item) for item in self.preferences.get("skills", [])]
-        tk.Label(parent, text="Revise skills de terceiros antes de ativar. Scripts não são isolados.",
+        tk.Label(parent, text="Skills na pasta skill da instalação são sempre automáticas; "
+                 "retire o arquivo da pasta para desativar. O gerenciador abaixo é para "
+                 "outras skills. Revise as fontes; scripts não são isolados.",
                  bg=C["bg"], fg=C["dim"], font=UI_FONT, justify="left", wraplength=480).pack(fill="x", pady=8)
         listing = tk.Listbox(parent, height=5, bg=C["panel"], fg=C["fg"],
                              selectbackground=C["sel"], selectforeground=C["fg"])
@@ -1360,7 +1362,10 @@ class App(tk.Tk):
                                      ("\n\n" + self.model_error if self.model_error else ""))
             return
         try:
-            instructions = skill_context(self.preferences.get("skills", []))
+            automatic_dir = os.path.join(installation_dir(), "skill")
+            entries = [entry for entry in self.preferences.get("skills", [])
+                       if not is_automatic_skill(entry["path"], automatic_dir)]
+            instructions = skill_context(entries)
             content, files = prepare_content(text, self._attachments())
         except (OSError, ValueError) as e:
             messagebox.showerror("Skills ou anexos", str(e))
