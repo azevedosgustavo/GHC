@@ -96,6 +96,33 @@ pacotes nem sempre são compatíveis com Python 3.8 ou Windows 7.
   layout não produziu Tcl/Tk utilizável e que o pacote NuGet usado não o incluía.
   São observações daquele ambiente, não garantias para todas as distribuições.
 
+## Problemas conhecidos de empacotamento Tkinter (PyInstaller)
+
+- Sintoma: `FileNotFoundError: Tcl data directory "...\\_MEIxxxx\\tcl" not found`
+  ao abrir o `.exe` com `--windowed` (o erro aparece em `pyi_rth__tkinter`).
+  Causa: o hook de runtime do Tkinter procura as pastas `tcl` e `tk` na raiz do
+  pacote temporário, mas o PyInstaller não as copiou.
+- Solução que funcionou no Python 3.8.10 x86 (Tcl/Tk 8.6) com `--onefile`:
+  incluir as pastas do Tcl/Tk com destinos exatamente `tcl` e `tk`:
+  ```cmd
+  C:\Python3810\python.exe -m PyInstaller --onefile --windowed --noconfirm --clean --name Calculadora ^
+    --add-data "C:\Python3810\tcl\tcl8.6;tcl" ^
+    --add-data "C:\Python3810\tcl\tk8.6;tk" ^
+    calculadora.py
+  ```
+  Não use destinos como `_tcl_data` e `_tk_data`: isso não resolveu o erro.
+- Antes de recompilar, encerre apenas os processos de teste identificados pelo
+  PID, com autorização quando necessária. Com o arquivo em uso, o build falha
+  com `PermissionError: [WinError 5]`.
+- Um teste de "continua rodando após N segundos" não prova que a GUI abriu:
+  a falha pode ocorrer dentro do hook e exibir apenas uma caixa de erro.
+  Para diagnóstico, gere antes uma versão de console (sem `--windowed`) e leia o
+  stderr. Depois gere a versão final com `--windowed` e teste visualmente.
+- Confirme a existência de `C:\Python3810\tcl\tcl8.6\init.tcl` e de
+  `C:\Python3810\tcl\tk8.6\tk.tcl` antes do build.
+- Limpeza: os artefatos `build\`, `*.spec` e versões de teste são temporários
+  apenas se o usuário autorizar a remoção; registre o que foi removido.
+
 Referências: https://docs.python.org/3.9/using/windows.html ,
 https://www.python.org/downloads/release/python-3810/ ,
 https://pyinstaller.org/en/v5.13.2/requirements.html e

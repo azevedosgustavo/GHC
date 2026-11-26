@@ -1,6 +1,6 @@
 ---
 name: Sys-execucao
-description: Seleção de ferramentas de execução do GHC.
+description: Escolha ferramentas para criar ou executar arquivos, código Python, scripts, comandos CMD e PowerShell no Windows.
 ---
 
 # Habilidade padrão do GHC — seleção de ferramenta de execução

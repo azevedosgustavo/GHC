@@ -1,6 +1,6 @@
 ---
 name: Sys-word
-description: Orientações para gerar e validar documentos Word.
+description: Use para criar e validar documentos Word em formato DOCX com Python.
 ---
 
 # Habilidade padrão — especialista em Word

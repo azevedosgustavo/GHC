@@ -1,6 +1,6 @@
 ---
 name: Sys-arquivos
-description: Orientações gerais para criar e entregar arquivos.
+description: Use ao criar, salvar ou entregar arquivos e downloads solicitados pelo usuário.
 ---
 
 # Habilidade padrão — criação de arquivos

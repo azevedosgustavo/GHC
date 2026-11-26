@@ -1,6 +1,6 @@
 ---
 name: Sys-pdf
-description: Orientações para gerar e validar documentos PDF.
+description: Use para criar e validar documentos PDF com Python e ReportLab.
 ---
 
 # Habilidade padrão — especialista em PDF

@@ -1,6 +1,6 @@
 ---
 name: Sys-excel
-description: Orientações para gerar e validar planilhas Excel.
+description: Use para criar e validar planilhas Excel em formato XLSX com Python.
 ---
 
 # Habilidade padrão — especialista em Excel
