@@ -37,7 +37,10 @@ ambiente de destino; os testes automatizados não comprovam essas integrações.
   até 4 MiB; há limites adicionais de extração. PDFs digitalizados precisam de
   OCR, não disponível; `.doc` e `.xls` antigos não são suportados. Imagens
   exigem suporte multimodal pelo modelo e pela API. Os anexos podem ser
-  removidos da conversa; o original selecionado não é alterado.
+  removidos da conversa; o original selecionado não é alterado. No Windows,
+  cole imagens ou arquivos de imagem no campo de texto com Ctrl+V. A imagem
+  colada é anexada em PNG e obedece aos mesmos limites; colar texto continua
+  funcionando normalmente.
 - Configurações de tema, modo padrão, modelo preferido, instruções pessoais
   para novas conversas, limite de contexto em caracteres serializados
   (0 = sem limite), fontes e navegador usado pelo GHC. A escolha de navegador
@@ -80,10 +83,10 @@ ambiente de destino; os testes automatizados não comprovam essas integrações.
 - **Skills automáticas:** a pasta `skill` dentro da instalação do GHC é criada
   pelo instalador. Cada arquivo `.md` não vazio, em UTF-8 e com até 100 KiB,
   diretamente nessa pasta ou em qualquer subpasta, é uma skill independente.
-  Elas são carregadas automaticamente a cada chamada ao modelo, inclusive após
-  alterações, sem aprovação individual. Confie apenas em arquivos colocados
-  nessa pasta: suas instruções são enviadas ao modelo e, no piloto automático,
-  podem influenciar comandos executados sem confirmação ou isolamento. Para
+  São descobertas a cada pedido, inclusive após alterações, sem aprovação
+  individual. Confie apenas em arquivos colocados nessa pasta: suas instruções
+  podem ser carregadas pelo modelo e, no piloto automático, influenciar comandos
+  executados sem confirmação ou isolamento. Para
   desativar uma delas, retire o arquivo dessa pasta; o gerenciador de outras
   skills não controla sua ativação ou seus parâmetros. A habilidade de criação
   de skills orienta o GHC a usar essa pasta e respeita os modos de permissão.
@@ -91,19 +94,27 @@ ambiente de destino; os testes automatizados não comprovam essas integrações.
   desinstalação. A skill de desenvolvimento Python para Windows vem no pacote;
   arquivos de skills já existentes não são sobrescritos nem atualizados pelo
   instalador. As habilidades padrão ficam nessa mesma pasta em arquivos com
-  prefixo `Sys-`; também são carregadas automaticamente e podem ser editadas
+  prefixo `Sys-`; também são descobertas automaticamente e podem ser editadas
   ou desativadas retirando seus arquivos.
 - **Outras skills locais:** em **Skills**, adicione `SKILL.md` ou descubra arquivos
   na pasta escolhida e em suas subpastas imediatas. Revise o conteúdo e ative
   apenas fontes confiáveis; é possível definir parâmetros de texto por skill
-  e ativar ou desativar cada uma. As instruções e parâmetros ativos são
-  enviados ao modelo em cada conversa; não inclua segredos. Alterações no
+  e ativar ou desativar cada uma. As instruções e parâmetros podem ser
+  enviados ao modelo quando usados; não inclua segredos. Alterações no
   `SKILL.md` adicionados por esse gerenciador exigem nova aprovação. Outros arquivos da skill, incluindo scripts,
   não são verificados e podem mudar sem aviso. Scripts não são executados pelo
   gerenciador: o modelo pode solicitá-los pelas ferramentas de comando, sujeitas
   ao modo selecionado. No piloto automático eles podem executar sem confirmação
   e sem isolamento. O suporte atual não instala skills nem implementa todas as
   funcionalidades de outros harnesses.
+- A cada solicitação, tanto no chat gráfico quanto no terminal, o GHC envia
+  somente o catálogo de nomes e descrições das skills automáticas e habilitadas.
+  O modelo é orientado a carregar instruções e parâmetros das skills relevantes
+  sob demanda. A escolha depende do modelo e não é garantida; carregar uma
+  skill pode exigir uma chamada adicional. O texto carregado não é mantido no
+  histórico após o turno, e as permissões de execução continuam em vigor.
+  Inclua frontmatter YAML com `name` e `description` claros para facilitar
+  a seleção; arquivos sem esses metadados continuam disponíveis pelo nome.
 - **Painel de conversa:** anexos textuais, PDF com texto, DOCX e XLSX podem
   ser abertos como texto extraído ao lado do chat. Cartões propostos na conversa
   também podem abrir URLs HTTP/HTTPS após confirmação; scripts, estilos e outros
